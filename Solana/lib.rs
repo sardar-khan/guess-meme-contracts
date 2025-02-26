@@ -23,14 +23,14 @@ pub mod config_feature {
 }
 
 #[program]
-pub mod hype {
+pub mod guess {
     use super::*;
 
     /// Creates the global state.
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         require!(
             !ctx.accounts.global.initialized,
-            HypeError::AlreadyInitialized
+            GuessError::AlreadyInitialized
         );
 
         ctx.accounts.global.authority = *ctx.accounts.user.key;
@@ -50,11 +50,11 @@ pub mod hype {
         token_total_supply: u64,
         fee_basis_points: u64,
     ) -> Result<()> {
-        require!(ctx.accounts.global.initialized, HypeError::NotInitialized);
+        require!(ctx.accounts.global.initialized, GuessError::NotInitialized);
         require_keys_eq!(
             ctx.accounts.user.key(),
             ctx.accounts.global.authority,
-            HypeError::NotAuthorized
+            GuessError::NotAuthorized
         );
 
         ctx.accounts.global.token_fee_recipient = token_fee_recipient;
@@ -99,7 +99,7 @@ pub mod hype {
 
         require!(
             (max_supply_percent > 0) && (max_supply_percent <= 100),
-            HypeError::InvalidMaxSupply
+            GuessError::InvalidMaxSupply
         );
 
         ctx.accounts.bonding_curve.max_supply_percent = max_supply_percent;
@@ -135,7 +135,7 @@ pub mod hype {
         require_keys_eq!(
             ctx.accounts.user.key(),
             ctx.accounts.global.authority,
-            HypeError::NotAuthorized
+            GuessError::NotAuthorized
         );
         // set the metadata for the token
         helpers::update_metadata(&ctx, name.clone(), symbol.clone(), uri.clone())?;
@@ -157,7 +157,7 @@ pub mod hype {
 
             require!(
                 (ctx.accounts.associated_user.amount + famount) <= max_allowed_amount,
-                HypeError::MaxSupplyExceeded
+                GuessError::MaxSupplyExceeded
             );
         }
 
@@ -168,16 +168,16 @@ pub mod hype {
         // check that the sol cost is within the slippage tolerance
         require!(
             sol_cost + fee <= max_sol_cost,
-            HypeError::TooMuchSolRequired
+            GuessError::TooMuchSolRequired
         );
         require_keys_eq!(
             ctx.accounts.associated_bonding_curve.mint,
             ctx.accounts.mint.key(),
-            HypeError::MintDoesNotMatchBondingCurve
+            GuessError::MintDoesNotMatchBondingCurve
         );
         require!(
             !ctx.accounts.bonding_curve.complete,
-            HypeError::BondingCurveComplete
+            GuessError::BondingCurveComplete
         );
 
         // update the bonding curve parameters
@@ -228,16 +228,16 @@ pub mod hype {
         // check that the sol cost is within the slippage tolerance
         require!(
             sol_output - fee >= min_sol_output,
-            HypeError::TooLittleSolReceived
+            GuessError::TooLittleSolReceived
         );
         require_keys_eq!(
             ctx.accounts.associated_bonding_curve.mint,
             ctx.accounts.mint.key(),
-            HypeError::MintDoesNotMatchBondingCurve
+            GuessError::MintDoesNotMatchBondingCurve
         );
         require!(
             !ctx.accounts.bonding_curve.complete,
-            HypeError::BondingCurveComplete
+            GuessError::BondingCurveComplete
         );
 
         // update the bonding curve parameters
@@ -273,18 +273,18 @@ pub mod hype {
     pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
         require!(
             ctx.accounts.bonding_curve.complete,
-            HypeError::BondingCurveNotComplete
+            GuessError::BondingCurveNotComplete
         );
         require_keys_eq!(
             config_feature::withdraw_authority::ID,
             ctx.accounts.user.key(),
-            HypeError::NotAuthorized
+            GuessError::NotAuthorized
         );
 
         require_keys_eq!(
             ctx.accounts.global.token_fee_recipient,
             ctx.accounts.token_fee_recipient.key(),
-            HypeError::NotAuthorized
+            GuessError::NotAuthorized
         );
 
         // transfer the tokens from the bonding curve to the admin
@@ -386,7 +386,7 @@ mod helpers {
         require_keys_eq!(
             ctx.accounts.global.fee_recipient,
             ctx.accounts.fee_recipient.key(),
-            HypeError::NotAuthorized
+            GuessError::NotAuthorized
         );
 
         ctx.accounts.bonding_curve.sub_lamports(sol_amount)?;
@@ -463,7 +463,7 @@ mod helpers {
         require_keys_eq!(
             ctx.accounts.global.fee_recipient,
             ctx.accounts.fee_recipient.key(),
-            HypeError::NotAuthorized
+            GuessError::NotAuthorized
         );
 
         // transfer sol to associated account
@@ -600,7 +600,7 @@ mod helpers {
 }
 
 #[error_code]
-pub enum HypeError {
+pub enum GuessError {
     #[msg("The given account is not authorized to execute this instruction.")]
     NotAuthorized,
     #[msg("The program is already initialized.")]
