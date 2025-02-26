@@ -744,28 +744,7 @@ contract Factory is Ownable {
         emit TokensPurchased(msg.sender, _token, _amount);
     }
 
-    function userBuyTokens(address _token, address _buyer, uint256 _amount) external payable onlyOwner{
-        require(isToken[_token], "Token doesn't exist!");
-        require(_amount > 0, "Can't buy zero tokens");
-        require(!bondingCurve[_token].isCompleted, "Bonding curve completed");
-        uint256 allowedToBuy = (bondingCurve[_token].realTokenReserves *
-            bondingCurve[_token].maxSupplyPercentage) / 100;
-        require(_amount <= allowedToBuy, "Can't buy more than allowed tokens");
-        uint256 ethToBuy = buyQuote(_token, _amount);
-        uint256 fee = (ethToBuy * feeBasisPoints) / 10_000;
-        require(msg.value >= ethToBuy + fee, "Not enough value paid");
-
-        bondingCurve[_token].virtualTokenReserves -= _amount;
-        bondingCurve[_token].realTokenReserves -= _amount;
-        bondingCurve[_token].virtualEthReserves += ethToBuy;
-        bondingCurve[_token].realEthReserves += ethToBuy;
-        if (bondingCurve[_token].realTokenReserves == 0) {
-            bondingCurve[_token].isCompleted = true;
-        }
-        payable(feeRecipient).transfer(fee);
-        IERC20(_token).transfer(_buyer, _amount);
-        emit TokensPurchased(_buyer, _token, _amount);
-    }
+  
 
     function sellTokens(address _token, uint256 _amount) external {
         require(isToken[_token], "Token doesn't exist!");
