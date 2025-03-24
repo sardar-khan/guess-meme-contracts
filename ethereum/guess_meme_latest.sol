@@ -1,4 +1,12 @@
 /**
+ *Submitted for verification at Etherscan.io on 2025-03-06
+*/
+
+/**
+ *Submitted for verification at Etherscan.io on 2025-02-19
+*/
+
+/**
  *Submitted for verification at Etherscan.io on 2025-02-13
 */
 
@@ -21,7 +29,6 @@ abstract contract Context {
         return msg.data;
     }
 }
-
 /**
  * @dev Contract module which provides a basic access control mechanism, where
  * there is an account (an owner) that can be granted exclusive access to
@@ -135,6 +142,7 @@ interface IERC20 {
      * Emits a {Transfer} event.
      */
     function transfer(address to, uint256 amount) external returns (bool);
+    function updateMetadata(string memory name_, string memory symbol_) external;
 
     /**
      * @dev Returns the remaining number of tokens that `spender` will be
@@ -239,10 +247,11 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
     mapping(address => mapping(address => uint256)) private _allowances;
 
     uint256 private _totalSupply;
-    uint256 private _reveal;
+    
 
     string private _name;
     string private _symbol;
+    address _factory;
 
     /**
      * @dev Sets the values for {name} and {symbol}.
@@ -253,18 +262,18 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * All two of these values are immutable: they can only be set once during
      * construction.
      */
-    constructor(string memory name_, string memory symbol_,uint256 reveal_) {
+    constructor(string memory name_, string memory symbol_, address factory_) {
         _name = name_;
         _symbol = symbol_;
-        _reveal=reveal_;
+        _factory = factory_;
     }
 
     /**
      * @dev Returns the name of the token.
      */
     function name() public view virtual override returns (string memory) {
-        if(_reveal<block.timestamp) return _name;
-        else return "Guess";
+       return _name;
+      
     }
 
     /**
@@ -272,8 +281,8 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * name.
      */
     function symbol() public view virtual override returns (string memory) {
-           if(_reveal<block.timestamp) return _symbol;
-        else return "Guess";
+           return _symbol;
+       
     }
 
     /**
@@ -321,6 +330,15 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `to` cannot be the zero address.
      * - the caller must have a balance of at least `amount`.
      */
+    function updateMetadata(string memory name_, string memory symbol_)
+    public
+    virtual
+    {
+        require(msg.sender==_factory,"only factory can call this function");
+        _name = name_;
+        _symbol = symbol_;  
+    }
+
     function transfer(address to, uint256 amount)
         public
         virtual
@@ -633,17 +651,16 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
 }
 
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity 0.8.26;
 
 contract Token is ERC20, Ownable {
     constructor(
         string memory _name,
         string memory _symbol,
         uint256 _totalSupply,
-        uint256 _reveal
-    ) ERC20(_name, _symbol,_reveal) {
+        address _factory
+    ) ERC20(_name, _symbol,_factory) {
         _mint(msg.sender, _totalSupply);
-
     }
 }
 
@@ -651,10 +668,11 @@ contract Factory is Ownable {
     address[] public tokenAddress;
     uint256 tokenCount;
 
-    // uint256 public initialVirtualEthReserves = 30*10**18;
+   
     uint256 public initialVirtualEthReserves = 1900000000000000000; //W.R.T SOLANA
-    // uint256 public virtualTokenAmount = 800_000_000 ether; //73 million tokens
-    uint256 public feeBasisPoints = 100; //0.01 %
+    uint256 public initialRealEthReserves = 793100000 *10**18;
+    
+    uint256 public feeBasisPoints = 100; // 1%
     address public feeRecipient;
     address public tokenFeeRecipient;
 
@@ -696,23 +714,20 @@ contract Factory is Ownable {
     );
 
     function createToken(
-        
         string memory _name,
         string memory _symbol,
-        uint256 _totalSupply,
-        uint8 _maxSupplyPercentage,
-        uint256 _reveal
+        uint8 _maxSupplyPercentage    
     ) external {
         require(
             _maxSupplyPercentage > 0 && _maxSupplyPercentage <= 100,
             "Choose between 1-100 % of the max supply"
         );
-        Token token = new Token(_name, _symbol, _totalSupply,_reveal);
-        BondingCurve storage _bondingCurve = bondingCurve[address(token)];
-        _bondingCurve._totalSupply = _totalSupply;
+         Token token = new Token(_name, _symbol, 1000000000 ether,address(this));
+         BondingCurve storage _bondingCurve = bondingCurve[address(token)];
+        _bondingCurve._totalSupply = 1000000000 ether;
         _bondingCurve.maxSupplyPercentage = _maxSupplyPercentage;
         _bondingCurve.virtualTokenReserves = 1073000191 *10**18;
-        _bondingCurve.realTokenReserves = 793100000 *10**18; //80 % of the tokens supply
+        _bondingCurve.realTokenReserves = initialRealEthReserves; 
         _bondingCurve.virtualEthReserves = initialVirtualEthReserves;
         isToken[address(token)] = true;
         tokenCreator[address(token)] = msg.sender;
@@ -720,14 +735,23 @@ contract Factory is Ownable {
         tokenCount++;
         emit TokenCreated(msg.sender, address(token));
     }
+    function updateMetadata(
+        string memory _name,
+        string memory _symbol,
+        address _token
+    ) external onlyOwner {
+          IERC20(_token).updateMetadata(_name, _symbol);
+    }
+
+    
 
     function buyTokens(address _token, uint256 _amount) external payable {
         require(isToken[_token], "Token doesn't exist!");
         require(_amount > 0, "Can't buy zero tokens");
         require(!bondingCurve[_token].isCompleted, "Bonding curve completed");
-        uint256 allowedToBuy = (bondingCurve[_token].realTokenReserves *
+        uint256 allowedToBuy = (initialRealEthReserves *
             bondingCurve[_token].maxSupplyPercentage) / 100;
-        require(_amount <= allowedToBuy, "Can't buy more than allowed tokens");
+        require(IERC20(_token).balanceOf(msg.sender) +_amount <= allowedToBuy, "Can't buy more than allowed tokens");
         uint256 ethToBuy = buyQuote(_token, _amount);
         uint256 fee = (ethToBuy * feeBasisPoints) / 10_000;
         require(msg.value >= ethToBuy + fee, "Not enough value paid");
@@ -743,8 +767,7 @@ contract Factory is Ownable {
         IERC20(_token).transfer(msg.sender, _amount);
         emit TokensPurchased(msg.sender, _token, _amount);
     }
-
-  
+   
 
     function sellTokens(address _token, uint256 _amount) external {
         require(isToken[_token], "Token doesn't exist!");
@@ -771,7 +794,7 @@ contract Factory is Ownable {
         );
         uint256 ethToTransfer = bondingCurve[_token].realEthReserves;
         uint256 tokensToTransfer = IERC20(_token).balanceOf(address(this));
-        uint256 feeTokens = (bondingCurve[_token]._totalSupply * 1) / 100; //1% tokens fee
+        uint256 feeTokens = (tokensToTransfer * 1) / 100; //1% tokens fee
         bondingCurve[_token].virtualTokenReserves = 0;
         bondingCurve[_token].virtualEthReserves = 0;
         bondingCurve[_token].realEthReserves = 0;
@@ -795,6 +818,22 @@ contract Factory is Ownable {
         uint256 ethOutput = (k/(virtualTokenReserves-_amount))-virtualEthReserves;
         return ethOutput;
     }
+    function buyQuoteWithFee(address _token, uint256 _amount)
+        public
+        view
+        returns (uint256)
+    {
+        require(isToken[_token], "Token doesn't exist!");
+        uint256 virtualTokenReserves = bondingCurve[_token]
+            .virtualTokenReserves;
+        uint256 virtualEthReserves = bondingCurve[_token].virtualEthReserves;
+        uint256 k=  virtualEthReserves* virtualTokenReserves;
+
+        uint256 ethOutput = (k/(virtualTokenReserves-_amount))-virtualEthReserves;
+        
+         uint256 fee=(ethOutput * feeBasisPoints) / 10_000;
+         return ethOutput+fee;
+    }
 
     function sellQuote(address _token, uint256 _amount)
         public
@@ -807,8 +846,24 @@ contract Factory is Ownable {
         uint256 virtualEthReserves = bondingCurve[_token].virtualEthReserves;
         uint256 k=  virtualEthReserves* virtualTokenReserves;
 
-        uint256 ethOutput = virtualEthReserves-(k / (virtualTokenReserves + _amount)) ;
+        uint256 ethOutput = virtualEthReserves-1-(k / (virtualTokenReserves + _amount)) ;
         return ethOutput;
+    }
+    function sellQuoteWithFee(address _token, uint256 _amount)
+        public
+        view
+        returns (uint256)
+    {
+       require(isToken[_token], "Token doesn't exist!");
+        uint256 virtualTokenReserves = bondingCurve[_token]
+            .virtualTokenReserves;
+        uint256 virtualEthReserves = bondingCurve[_token].virtualEthReserves;
+        uint256 k=  virtualEthReserves* virtualTokenReserves;
+
+        uint256 ethOutput = virtualEthReserves-1-(k / (virtualTokenReserves + _amount)) ;
+        
+        uint256 fee = (ethOutput * feeBasisPoints) / 10_000;
+        return ethOutput+fee;
     }
 
     function calculateBuyFee(address _token, uint256 _amount) external view returns(uint256){
@@ -819,16 +874,7 @@ contract Factory is Ownable {
     }
 
     function changeFeeBasisPoints(uint256 _feeBasisPoints) external onlyOwner{
+        require(_feeBasisPoints<=500, "Fee can't be more than 5%");
         feeBasisPoints = _feeBasisPoints;
-    }
-
-    function withdrawStuckEth() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
-    }
-
-    function transferStuckTokens(IERC20 token) external onlyOwner {
-        uint256 _value = token.balanceOf(address(this));
-        require(_value > 0, "Not enough tokens to withdraw");
-        token.transfer(msg.sender, _value);
-    }
+    }  
 }

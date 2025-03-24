@@ -7,7 +7,7 @@ use anchor_spl::{
     token::{self, Mint, MintTo, Token, TokenAccount},
 };
 
-declare_id!("DfiDcFSUx576wxwcFGoZckL6ibzFf322zMLi9shKq5Dx");
+declare_id!("9HtryVvUYVdJpuX9GA6rD11m4RbrThdZQp2CSfjCLTV6");
 
 pub mod native_mint {
     use anchor_lang::declare_id;
@@ -18,19 +18,19 @@ pub mod native_mint {
 pub mod config_feature {
     pub mod withdraw_authority {
         use anchor_lang::declare_id;
-        declare_id!("4B868oRgryogLJirzMkebmBgcWirKSUE1WUe6Z21F8o1");
+        declare_id!("7QMH9DWpavmAP4q3D4maqHwVGh6NA4dZ3kstmVBwmjCX");
     }
 }
 
 #[program]
-pub mod guess {
+pub mod hype {
     use super::*;
 
     /// Creates the global state.
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         require!(
             !ctx.accounts.global.initialized,
-            GuessError::AlreadyInitialized
+            HypeError::AlreadyInitialized
         );
 
         ctx.accounts.global.authority = *ctx.accounts.user.key;
@@ -50,11 +50,11 @@ pub mod guess {
         token_total_supply: u64,
         fee_basis_points: u64,
     ) -> Result<()> {
-        require!(ctx.accounts.global.initialized, GuessError::NotInitialized);
+        require!(ctx.accounts.global.initialized, HypeError::NotInitialized);
         require_keys_eq!(
             ctx.accounts.user.key(),
             ctx.accounts.global.authority,
-            GuessError::NotAuthorized
+            HypeError::NotAuthorized
         );
 
         ctx.accounts.global.token_fee_recipient = token_fee_recipient;
@@ -85,21 +85,18 @@ pub mod guess {
         symbol: String,
         uri: String,
         max_supply_percent: u8,
-        initial_real_token_reserves: u64,
-        initial_virtual_token_reserves: u64,
-        token_total_supply: u64,
     ) -> Result<()> {
         // initialize the bonding curve parameters
-        ctx.accounts.bonding_curve.virtual_token_reserves = initial_virtual_token_reserves;
+        ctx.accounts.bonding_curve.virtual_token_reserves = ctx.accounts.global.initial_virtual_token_reserves;
         ctx.accounts.bonding_curve.virtual_sol_reserves =
             ctx.accounts.global.initial_virtual_sol_reserves;
-        ctx.accounts.bonding_curve.real_token_reserves = initial_real_token_reserves;
+        ctx.accounts.bonding_curve.real_token_reserves = ctx.accounts.global.initial_real_token_reserves;
         ctx.accounts.bonding_curve.real_sol_reserves = 0;
-        ctx.accounts.bonding_curve.token_total_supply = token_total_supply;
+        ctx.accounts.bonding_curve.token_total_supply = ctx.accounts.global.token_total_supply;
 
         require!(
             (max_supply_percent > 0) && (max_supply_percent <= 100),
-            GuessError::InvalidMaxSupply
+            HypeError::InvalidMaxSupply
         );
 
         ctx.accounts.bonding_curve.max_supply_percent = max_supply_percent;
@@ -108,7 +105,7 @@ pub mod guess {
         helpers::set_metadata(&ctx, name.clone(), symbol.clone(), uri.clone())?;
 
         // mint tokens to the bonding curve
-        helpers::mint_to_bonding_curve(&ctx, token_total_supply)?;
+        helpers::mint_to_bonding_curve(&ctx, ctx.accounts.global.token_total_supply)?;
 
         // revoke the mint authority
        
@@ -135,11 +132,11 @@ pub mod guess {
         require_keys_eq!(
             ctx.accounts.user.key(),
             ctx.accounts.global.authority,
-            GuessError::NotAuthorized
+            HypeError::NotAuthorized
         );
         // set the metadata for the token
         helpers::update_metadata(&ctx, name.clone(), symbol.clone(), uri.clone())?;
- helpers::revoke_mint_authority(&ctx)?;
+        helpers::revoke_mint_authority(&ctx)?;
         Ok(())
     }
     /// Buys tokens from a bonding curve.
@@ -151,13 +148,13 @@ pub mod guess {
         }
 
         if ctx.accounts.bonding_curve.max_supply_percent < 100 {
-            let max_allowed_amount: u64 = (ctx.accounts.bonding_curve.token_total_supply
+            let max_allowed_amount: u64 = (ctx.accounts.bonding_curve.initial_real_token_reserves
                 * ctx.accounts.bonding_curve.max_supply_percent as u64)
                 / 100;
 
             require!(
                 (ctx.accounts.associated_user.amount + famount) <= max_allowed_amount,
-                GuessError::MaxSupplyExceeded
+                HypeError::MaxSupplyExceeded
             );
         }
 
@@ -168,16 +165,16 @@ pub mod guess {
         // check that the sol cost is within the slippage tolerance
         require!(
             sol_cost + fee <= max_sol_cost,
-            GuessError::TooMuchSolRequired
+            HypeError::TooMuchSolRequired
         );
         require_keys_eq!(
             ctx.accounts.associated_bonding_curve.mint,
             ctx.accounts.mint.key(),
-            GuessError::MintDoesNotMatchBondingCurve
+            HypeError::MintDoesNotMatchBondingCurve
         );
         require!(
             !ctx.accounts.bonding_curve.complete,
-            GuessError::BondingCurveComplete
+            HypeError::BondingCurveComplete
         );
 
         // update the bonding curve parameters
@@ -228,16 +225,16 @@ pub mod guess {
         // check that the sol cost is within the slippage tolerance
         require!(
             sol_output - fee >= min_sol_output,
-            GuessError::TooLittleSolReceived
+            HypeError::TooLittleSolReceived
         );
         require_keys_eq!(
             ctx.accounts.associated_bonding_curve.mint,
             ctx.accounts.mint.key(),
-            GuessError::MintDoesNotMatchBondingCurve
+            HypeError::MintDoesNotMatchBondingCurve
         );
         require!(
             !ctx.accounts.bonding_curve.complete,
-            GuessError::BondingCurveComplete
+            HypeError::BondingCurveComplete
         );
 
         // update the bonding curve parameters
@@ -273,18 +270,18 @@ pub mod guess {
     pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
         require!(
             ctx.accounts.bonding_curve.complete,
-            GuessError::BondingCurveNotComplete
+            HypeError::BondingCurveNotComplete
         );
         require_keys_eq!(
             config_feature::withdraw_authority::ID,
             ctx.accounts.user.key(),
-            GuessError::NotAuthorized
+            HypeError::NotAuthorized
         );
 
         require_keys_eq!(
             ctx.accounts.global.token_fee_recipient,
             ctx.accounts.token_fee_recipient.key(),
-            GuessError::NotAuthorized
+            HypeError::NotAuthorized
         );
 
         // transfer the tokens from the bonding curve to the admin
@@ -304,6 +301,15 @@ pub mod guess {
         ctx.accounts.bonding_curve.virtual_sol_reserves = 0;
         ctx.accounts.bonding_curve.real_token_reserves = 0;
         ctx.accounts.bonding_curve.virtual_token_reserves = 0;
+
+          emit!(WithdrawEvent {
+                mint: ctx.accounts.mint.key(),
+                admin: ctx.accounts.user.key(),
+                bonding_curve: ctx.accounts.bonding_curve.key(),
+                timestamp: Clock::get()?.unix_timestamp,
+                amount_solana: Clock::get()?.unix_timestamp,
+                amount_eth: Clock::get()?.unix_timestamp,
+            });
 
         Ok(())
     }
@@ -386,7 +392,7 @@ mod helpers {
         require_keys_eq!(
             ctx.accounts.global.fee_recipient,
             ctx.accounts.fee_recipient.key(),
-            GuessError::NotAuthorized
+            HypeError::NotAuthorized
         );
 
         ctx.accounts.bonding_curve.sub_lamports(sol_amount)?;
@@ -463,7 +469,7 @@ mod helpers {
         require_keys_eq!(
             ctx.accounts.global.fee_recipient,
             ctx.accounts.fee_recipient.key(),
-            GuessError::NotAuthorized
+            HypeError::NotAuthorized
         );
 
         // transfer sol to associated account
@@ -600,7 +606,7 @@ mod helpers {
 }
 
 #[error_code]
-pub enum GuessError {
+pub enum HypeError {
     #[msg("The given account is not authorized to execute this instruction.")]
     NotAuthorized,
     #[msg("The program is already initialized.")]
@@ -718,6 +724,15 @@ pub struct CompleteEvent {
     pub mint: Pubkey,
     pub bonding_curve: Pubkey,
     pub timestamp: i64,
+}
+#[event]
+pub struct WithdrawEvent {
+    pub admin: Pubkey,
+    pub mint: Pubkey,
+    pub bonding_curve: Pubkey,
+    pub timestamp: i64,
+    pub amount_solana: u64,
+    pub amount_token: u64,
 }
 
 #[event]
@@ -862,7 +877,11 @@ pub struct Buy<'info> {
         seeds::program = associated_token::ID
     )]
     pub associated_bonding_curve: Box<Account<'info, TokenAccount>>,
-    #[account(mut)]
+    #[account(
+        mut,
+         associated_token::mint = mint,
+        associated_token::authority = user,
+    )]
     pub associated_user: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
     pub user: Signer<'info>,
@@ -888,7 +907,11 @@ pub struct Sell<'info> {
         seeds::program = associated_token::ID
     )]
     pub associated_bonding_curve: Box<Account<'info, TokenAccount>>,
-    #[account(mut)]
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = user,
+    )]
     pub associated_user: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
     pub user: Signer<'info>,
@@ -914,12 +937,7 @@ pub struct Withdraw<'info> {
     #[account(mut)]
     /// CHECK: destination address
     pub token_fee_recipient: UncheckedAccount<'info>,
-    #[account(
-        init,
-        payer = user,
-        associated_token::mint = mint,
-        associated_token::authority = token_fee_recipient,
-    )]
+    #[account(mut)]
     pub associated_token_fee_recipient: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
     pub associated_user: Box<Account<'info, TokenAccount>>,
